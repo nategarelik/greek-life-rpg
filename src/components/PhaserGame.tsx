@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef, useLayoutEffect, useRef } from 'react';
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { StartGame } from '@/game/main';
 
 export interface PhaserGameRef {

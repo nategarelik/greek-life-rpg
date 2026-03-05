@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { NPC } from './NPC';
 import type { NPCConfig } from './NPC';
 

@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 
 export function flashSprite(
   sprite: Phaser.GameObjects.GameObject & { setTint: (tint: number) => void; clearTint: () => void },

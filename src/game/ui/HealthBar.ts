@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 
 export class HealthBar extends Phaser.GameObjects.Container {
   private background: Phaser.GameObjects.Rectangle;

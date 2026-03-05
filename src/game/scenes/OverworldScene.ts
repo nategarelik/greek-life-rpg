@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { Direction, type GridEngine } from 'grid-engine';
 import type { BattleConfig } from '@/types/battle';
 import { generateFreshmanQuad } from '@/game/utils/mapGenerator';

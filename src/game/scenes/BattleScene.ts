@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import type { BattleParticipant, BattleAction, BattleConfig } from '@/types/battle';
 import { BattleSystem } from '@/game/systems/BattleSystem';
 import { BattleStateMachine } from '@/game/states/BattleStateMachine';

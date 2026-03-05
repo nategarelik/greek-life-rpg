@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { generatePlaceholderAssets } from '@/game/utils/assetGenerator';
 
 export class BootScene extends Phaser.Scene {

@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 
 const MENU_ITEMS = ['New Game', 'Continue', 'Settings'] as const;
 type MenuItem = typeof MENU_ITEMS[number];

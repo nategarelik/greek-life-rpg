@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { MOVE_MAP } from '../../data/moves';
 import { TYPE_COLORS } from '../../data/constants';
 

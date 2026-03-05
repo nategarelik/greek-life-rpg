@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 
 export function generatePlaceholderAssets(scene: Phaser.Scene): void {
   generatePlayerSprites(scene);

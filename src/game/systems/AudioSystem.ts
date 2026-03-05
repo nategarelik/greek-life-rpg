@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 
 const STORAGE_KEY = 'bromon_audio_settings';
 
