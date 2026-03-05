@@ -2,14 +2,32 @@ import * as Phaser from 'phaser';
 import { Direction, type GridEngine } from 'grid-engine';
 import type { BattleConfig } from '@/types/battle';
 import { gameState } from '@/game/GameState';
-import { generateFreshmanQuad } from '@/game/utils/mapGenerator';
+import { generateZoneMap, ZONE_CONFIGS } from '@/game/utils/mapGenerator';
+import type { ExitTile } from '@/game/utils/mapGenerator';
 import { EncounterSystem } from '@/game/systems/EncounterSystem';
 import { ENCOUNTER_MAP } from '@/data/encounters';
+import { TRAINER_MAP } from '@/data/trainers';
 
 // Tile index used to identify encounter tiles from mapGenerator
 const ENCOUNTER_TILE_INDEX = 3;
 const TILE_SIZE = 32;
 const TUTORIAL_DISPLAY_DURATION = 3000;
+
+const ZONE_BADGE_REQUIREMENTS: Record<string, number> = {
+  'freshman-quad': 0,
+  'quad-park': 0,
+  'campus-gym': 1,
+  'campus-library': 1,
+  'greek-row': 3,
+};
+
+const ZONE_NAMES: Record<string, string> = {
+  'freshman-quad': 'FRESHMAN QUAD',
+  'campus-library': 'CAMPUS LIBRARY',
+  'campus-gym': 'CAMPUS GYM',
+  'quad-park': 'QUAD PARK',
+  'greek-row': 'GREEK ROW',
+};
 
 // Extend scene type to include grid-engine plugin mapping
 interface OverworldSceneWithPlugin extends Phaser.Scene {
@@ -22,6 +40,14 @@ interface NpcData {
   dialogue: string;
   sprite: Phaser.GameObjects.Image;
   isHealer?: boolean;
+  isTrainer?: boolean;
+  trainerId?: string;
+}
+
+interface OverworldSceneData {
+  zoneId?: string;
+  spawnX?: number;
+  spawnY?: number;
 }
 
 type FacingDirection = 'up' | 'down' | 'left' | 'right';
@@ -29,8 +55,10 @@ type FacingDirection = 'up' | 'down' | 'left' | 'right';
 export class OverworldScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Image;
   private encounterTiles!: Set<string>;
+  private exitTiles!: ExitTile[];
   private lastPlayerPos = { x: -1, y: -1 };
   private inBattle = false;
+  private inTransition = false;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private facingDirection: FacingDirection = 'down';
@@ -40,21 +68,32 @@ export class OverworldScene extends Phaser.Scene {
   private zoneLabelText!: Phaser.GameObjects.Text;
   private tutorialOverlay?: Phaser.GameObjects.Container;
   private encounterSystem!: EncounterSystem;
+  private currentZoneId!: string;
 
   constructor() {
     super({ key: 'OverworldScene' });
   }
 
-  create(): void {
+  create(data: OverworldSceneData = {}): void {
     this.inBattle = false;
+    this.inTransition = false;
+    this.npcs = [];
     this.encounterSystem = new EncounterSystem();
+
+    // Resolve zone from scene data or global state
+    this.currentZoneId = data.zoneId ?? gameState.currentZoneId ?? 'freshman-quad';
+    gameState.currentZoneId = this.currentZoneId;
 
     const self = this as unknown as OverworldSceneWithPlugin;
     const { width, height } = this.cameras.main;
 
-    const { tilemap, groundLayer, collisionLayer, encounterTiles } = generateFreshmanQuad(this);
+    const { tilemap, groundLayer, collisionLayer, encounterTiles, exits } = generateZoneMap(this, this.currentZoneId);
 
     this.encounterTiles = new Set(encounterTiles.map((t) => `${t.x},${t.y}`));
+    this.exitTiles = exits;
+
+    const spawnX = data.spawnX ?? 15;
+    const spawnY = data.spawnY ?? 15;
 
     this.playerSprite = this.add.image(-100, -100, 'player-down').setDepth(10);
 
@@ -63,7 +102,7 @@ export class OverworldScene extends Phaser.Scene {
         {
           id: 'player',
           sprite: this.playerSprite as unknown as Phaser.GameObjects.Sprite,
-          startPosition: { x: 15, y: 15 },
+          startPosition: { x: spawnX, y: spawnY },
           speed: 4,
         },
       ],
@@ -86,10 +125,15 @@ export class OverworldScene extends Phaser.Scene {
       this.scene.launch('PauseMenuScene');
     });
 
-    this.addNpcs(tilemap);
+    this.addNpcs();
     this.buildHud(width, height);
     this.showZoneLabel();
-    this.showTutorialOverlay(width, height);
+
+    // Only show tutorial on first visit to freshman-quad
+    if (this.currentZoneId === 'freshman-quad' && !gameState.storyFlags['tutorialShown']) {
+      gameState.storyFlags['tutorialShown'] = true;
+      this.showTutorialOverlay(width, height);
+    }
 
     void groundLayer;
     void collisionLayer;
@@ -98,6 +142,7 @@ export class OverworldScene extends Phaser.Scene {
 
   update(): void {
     if (this.inBattle) return;
+    if (this.inTransition) return;
     if (this.dialogueBox) return;
 
     const self = this as unknown as OverworldSceneWithPlugin;
@@ -125,6 +170,7 @@ export class OverworldScene extends Phaser.Scene {
 
     if (pos.x !== this.lastPlayerPos.x || pos.y !== this.lastPlayerPos.y) {
       this.lastPlayerPos = { ...pos };
+      this.checkExit(pos.x, pos.y);
       this.checkEncounter(pos.x, pos.y);
     }
   }
@@ -133,6 +179,34 @@ export class OverworldScene extends Phaser.Scene {
     if (this.facingDirection === direction) return;
     this.facingDirection = direction;
     this.playerSprite.setTexture(`player-${direction}`);
+  }
+
+  private checkExit(x: number, y: number): void {
+    const exit = this.exitTiles.find((e) => e.x === x && e.y === y);
+    if (!exit) return;
+
+    const required = ZONE_BADGE_REQUIREMENTS[exit.targetZoneId] ?? 0;
+    if (gameState.badges.length < required) {
+      const badgeWord = required === 1 ? 'badge' : 'badges';
+      this.showDialogue(`You need ${required} ${badgeWord} to enter this area! You have ${gameState.badges.length}.`);
+      return;
+    }
+
+    this.triggerZoneTransition(exit);
+  }
+
+  private triggerZoneTransition(exit: ExitTile): void {
+    this.inTransition = true;
+    gameState.currentZoneId = exit.targetZoneId;
+
+    this.scene.launch('TransitionScene', {
+      targetScene: 'OverworldScene',
+      targetData: {
+        zoneId: exit.targetZoneId,
+        spawnX: exit.targetX,
+        spawnY: exit.targetY,
+      },
+    });
   }
 
   private buildHud(width: number, height: number): void {
@@ -158,7 +232,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private showZoneLabel(): void {
-    const zoneName = 'FRESHMAN QUAD';
+    const zoneName = ZONE_NAMES[this.currentZoneId] ?? this.currentZoneId.toUpperCase();
     this.zoneLabelText.setText(zoneName);
 
     const fadeInOut = this.add.text(
@@ -196,7 +270,7 @@ export class OverworldScene extends Phaser.Scene {
     const text = this.add.text(
       width / 2,
       height / 2,
-      'Arrow keys to move.\nWalk into the tall grass to find wild Bros!',
+      'Arrow keys to move.\nWalk into the tall grass to find wild Bros!\nStep on glowing path edges to travel between zones.',
       {
         fontSize: '14px',
         color: '#ffffff',
@@ -221,23 +295,27 @@ export class OverworldScene extends Phaser.Scene {
     });
   }
 
-  private addNpcs(tilemap: Phaser.Tilemaps.Tilemap): void {
-    void tilemap;
+  private addNpcs(): void {
+    const config = ZONE_CONFIGS[this.currentZoneId];
+    if (!config) return;
 
-    const npcPositions = [
-      { x: 7, y: 3, dialogue: 'Welcome to the Freshman Quad! Walk into the tall grass to encounter wild Bros.', isHealer: false },
-      { x: 24, y: 3, dialogue: 'Need a rest? Let me heal your Bros!', isHealer: true },
-      { x: 7, y: 20, dialogue: 'Rush week is wild. I heard some legendary Bros hang out in the far corners of campus.', isHealer: false },
-    ];
-
-    for (const pos of npcPositions) {
+    for (const pos of config.npcSpawns) {
+      const textureKey = pos.isTrainer ? 'npc' : 'npc';
       const sprite = this.add.image(
         pos.x * TILE_SIZE + TILE_SIZE / 2,
         pos.y * TILE_SIZE + TILE_SIZE / 2,
-        'npc',
+        textureKey,
       ).setDepth(9);
 
-      this.npcs.push({ x: pos.x, y: pos.y, dialogue: pos.dialogue, sprite, isHealer: pos.isHealer });
+      this.npcs.push({
+        x: pos.x,
+        y: pos.y,
+        dialogue: pos.dialogue,
+        sprite,
+        isHealer: pos.isHealer,
+        isTrainer: pos.isTrainer,
+        trainerId: pos.trainerId,
+      });
     }
   }
 
@@ -261,9 +339,44 @@ export class OverworldScene extends Phaser.Scene {
     if (npc.isHealer) {
       gameState.party.healAll();
       this.showDialogue('Your Bros have been fully healed!');
-    } else {
-      this.showDialogue(npc.dialogue);
+      return;
     }
+
+    if (npc.isTrainer && npc.trainerId) {
+      const trainer = TRAINER_MAP[npc.trainerId];
+      if (!trainer) return;
+
+      if (gameState.defeatedTrainers.includes(npc.trainerId)) {
+        this.showDialogue(trainer.postDialogue[0] ?? 'You already beat me...');
+        return;
+      }
+
+      this.showDialogue(trainer.preDialogue[0] ?? `${trainer.name} wants to battle!`);
+      this.time.delayedCall(2500, () => {
+        this.closeDialogue();
+        this.triggerTrainerBattle(trainer.id, trainer.battleConfig);
+      });
+      return;
+    }
+
+    this.showDialogue(npc.dialogue);
+  }
+
+  private triggerTrainerBattle(trainerId: string, battleConfig: import('@/types/battle').BattleConfig): void {
+    this.inBattle = true;
+    this.scene.pause('OverworldScene');
+
+    const config: import('@/types/battle').BattleConfig = { ...battleConfig, trainerId };
+
+    this.scene.launch('TransitionScene', {
+      targetScene: 'BattleScene',
+      targetData: config,
+    });
+
+    this.scene.get('BattleScene').events.once('shutdown', () => {
+      this.inBattle = false;
+      this.scene.resume('OverworldScene');
+    });
   }
 
   private getFacingOffset(): { x: number; y: number } {
@@ -309,6 +422,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private checkEncounter(x: number, y: number): void {
+    if (this.inTransition) return;
     const isEncounterTile = this.encounterTiles.has(`${x},${y}`);
     if (!this.encounterSystem.checkEncounter(isEncounterTile)) return;
     if (!gameState.hasStarterBro()) return;
@@ -325,7 +439,6 @@ export class OverworldScene extends Phaser.Scene {
     if (table) {
       battleConfig = this.encounterSystem.generateEncounter(table.encounters);
     } else {
-      // Fallback if no encounter table for current zone
       battleConfig = {
         isWild: true,
         enemyParty: [{ speciesId: 1, level: 3 }],

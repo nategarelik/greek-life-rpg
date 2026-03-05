@@ -14,6 +14,9 @@ export interface BattleParticipant {
   statusEffect: StatusEffect | null;
   statusTurns: number;
   isPlayer: boolean;
+  broType: import('./bros').BroType;
+  expYield: number;
+  currentXP: number;
 }
 
 export type BattleAction =
@@ -45,6 +48,7 @@ export interface BattleConfig {
   isWild: boolean;
   trainerName?: string;
   trainerSprite?: string;
+  trainerId?: string;
   enemyParty: {
     speciesId: number;
     level: number;

@@ -36,4 +36,8 @@ export class BattleStateMachine {
   getCurrentStateName(): string | null {
     return this.currentStateName;
   }
+
+  hasState(name: string): boolean {
+    return this.states.has(name);
+  }
 }

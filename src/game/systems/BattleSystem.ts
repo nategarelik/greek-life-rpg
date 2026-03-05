@@ -7,10 +7,12 @@ import {
   calculateDamage,
   calculateCatchRate,
   calculateXPGain,
+  xpForLevel,
   getStatModMultiplier,
   isCriticalHit,
   randomInRange,
 } from '../utils/math';
+import { MAX_LEVEL } from '../../data/constants';
 
 export interface MoveResult {
   hit: boolean;
@@ -101,11 +103,8 @@ export class BattleSystem {
       // Actually, the BattleScene should pass the correct species type.
       // We'll store broType on participant via speciesId lookup at construction time.
       // For now, read it from the extended participant (see BattleScene).
-      const defenderBroType = (defender as BattleParticipant & { broType?: string }).broType as import('../../types/bros').BroType | undefined;
-      const attackerBroType = (attacker as BattleParticipant & { broType?: string }).broType as import('../../types/bros').BroType | undefined;
-
-      const effectiveness = defenderBroType ? getEffectiveness(move.type, defenderBroType) : 1.0;
-      const stab = attackerBroType ? attackerBroType === move.type : false;
+      const effectiveness = getEffectiveness(move.type, defender.broType);
+      const stab = attacker.broType === move.type;
       const critical = isCriticalHit();
 
       damageResult = calculateDamage(
@@ -252,8 +251,9 @@ export class BattleSystem {
     const catchValue = calculateCatchRate(
       this.enemySide.maxSTA,
       this.enemySide.currentSTA,
-      255, // Will be replaced by actual species catch rate in BattleScene
+      255,
       ballModifier,
+      this.enemySide.statusEffect,
     );
 
     const shakeThreshold = Math.floor(65536 / Math.sqrt(Math.sqrt(255 / catchValue)));
@@ -277,6 +277,7 @@ export class BattleSystem {
       this.enemySide.currentSTA,
       catchRate,
       ballModifier,
+      this.enemySide.statusEffect,
     );
 
     const shakeThreshold = Math.floor(65536 / Math.sqrt(Math.sqrt(255 / Math.max(1, catchValue))));
@@ -312,11 +313,9 @@ export class BattleSystem {
     }
 
     // Weight moves by type advantage
-    const playerBroType = (this.playerSide as BattleParticipant & { broType?: string }).broType as import('../../types/bros').BroType | undefined;
-
     const weights = availableMoves.map((entry) => {
-      if (!entry.move || !playerBroType) return 1;
-      const effectiveness = getEffectiveness(entry.move.type, playerBroType);
+      if (!entry.move) return 1;
+      const effectiveness = getEffectiveness(entry.move.type, this.playerSide.broType);
       return effectiveness * effectiveness; // Square to heavily favor super effective
     });
 
@@ -335,18 +334,17 @@ export class BattleSystem {
 
   awardXP(winner: BattleParticipant, loser: BattleParticipant): XPResult {
     // Look up base yield — caller must have set it on the loser
-    const baseYield = (loser as BattleParticipant & { expYield?: number }).expYield ?? 50;
+    const baseYield = loser.expYield;
     const xpGained = calculateXPGain(baseYield, loser.level, this.isWild);
 
-    const currentXP = (winner as BattleParticipant & { currentXP?: number }).currentXP ?? 0;
+    const currentXP = winner.currentXP;
     const newXP = currentXP + xpGained;
 
     let level = winner.level;
     const newMoves: number[] = [];
 
-    // Check level ups (cap at MAX_LEVEL = 50)
-    while (level < 50) {
-      const xpNeeded = (level * level * level * 4) / 5;
+    while (level < MAX_LEVEL) {
+      const xpNeeded = xpForLevel(level + 1);
       if (newXP < xpNeeded) break;
       level++;
     }

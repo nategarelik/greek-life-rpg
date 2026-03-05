@@ -1,6 +1,9 @@
 import type { BroSpecies, BroStats } from '@/types/bros';
 import type { SavedBro } from '@/types/save';
 import { BRO_MAP } from '@/data/bros';
+import { MOVE_MAP } from '@/data/moves';
+import { MAX_LEVEL } from '@/data/constants';
+import { xpForLevel } from '@/game/utils/math';
 
 export interface LevelUpResult {
   newLevel: number;
@@ -67,7 +70,7 @@ export function getMovesForLevel(species: BroSpecies, level: number): number[] {
 export function createBroInstance(species: BroSpecies, level: number, ivs?: BroStats): SavedBro {
   const resolvedIVs = ivs ?? generateRandomIVs();
   const stats = calculateStatsForLevel(species, level, resolvedIVs);
-  const moves = getMovesForLevel(species, level).map((moveId) => ({ moveId, currentPP: 0 }));
+  const moves = getMovesForLevel(species, level).map((moveId) => ({ moveId, currentPP: MOVE_MAP[moveId]?.pp ?? 10 }));
 
   return {
     instanceId: generateInstanceId(),
@@ -94,55 +97,71 @@ export function createStarterBro(speciesId: number, level: number): SavedBro {
   return createBroInstance(species, level, generateGoodIVs());
 }
 
-// XP thresholds: medium-fast curve — level^3
-function xpForLevel(level: number): number {
-  return level * level * level;
-}
-
 export function addXP(bro: SavedBro, amount: number): LevelUpResult | null {
-  if (bro.level >= 100) return null;
+  if (bro.level >= MAX_LEVEL) return null;
 
-  const newXP = bro.currentXP + amount;
-  const nextLevelXP = xpForLevel(bro.level + 1);
-
-  if (newXP < nextLevelXP) {
-    bro.currentXP = newXP;
-    return null;
-  }
-
-  const oldLevel = bro.level;
-  bro.currentXP = newXP - nextLevelXP;
-  bro.level = oldLevel + 1;
-
-  const speciesForStats = BRO_MAP[bro.speciesId];
-  if (speciesForStats) {
-    const oldMaxSTA = bro.stats.stamina;
-    const newStats = calculateStatsForLevel(speciesForStats, bro.level, bro.ivs);
-    bro.currentSTA = Math.min(bro.currentSTA + (newStats.stamina - oldMaxSTA), newStats.stamina);
-    bro.stats = newStats;
-  }
-
+  bro.currentXP += amount;
   const species = BRO_MAP[bro.speciesId];
   const movesLearned: number[] = [];
+  let leveled = false;
 
-  if (species) {
-    for (const entry of species.learnset) {
-      if (entry.level === bro.level) {
-        movesLearned.push(entry.moveId);
+  // Multi-level-up loop
+  while (bro.level < MAX_LEVEL && bro.currentXP >= xpForLevel(bro.level + 1)) {
+    bro.currentXP -= xpForLevel(bro.level + 1);
+    bro.level++;
+    leveled = true;
+
+    // Recalculate stats each level
+    if (species) {
+      const oldMaxSTA = bro.stats.stamina;
+      const newStats = calculateStatsForLevel(species, bro.level, bro.ivs);
+      bro.currentSTA = Math.min(bro.currentSTA + (newStats.stamina - oldMaxSTA), newStats.stamina);
+      bro.stats = newStats;
+    }
+
+    // Collect new moves for this level
+    if (species) {
+      for (const entry of species.learnset) {
+        if (entry.level === bro.level) {
+          movesLearned.push(entry.moveId);
+        }
       }
     }
   }
 
+  if (!leveled) return null;
+
   const canEvolve = species?.evolvesTo != null && species.evolveLevel != null && bro.level >= species.evolveLevel;
-  const result: LevelUpResult = {
+  return {
     newLevel: bro.level,
     statsGained: {},
     movesLearned,
     canEvolve,
     evolvesToSpeciesId: canEvolve ? species!.evolvesTo : undefined,
   };
+}
 
-  return result;
+export function evolveBro(bro: SavedBro, toSpeciesId: number): SavedBro {
+  const newSpecies = BRO_MAP[toSpeciesId];
+  if (!newSpecies) return bro;
+
+  const oldMaxSTA = bro.stats.stamina;
+  const hpRatio = bro.currentSTA / Math.max(1, oldMaxSTA);
+
+  bro.speciesId = toSpeciesId;
+  bro.stats = calculateStatsForLevel(newSpecies, bro.level, bro.ivs);
+  bro.currentSTA = Math.max(1, Math.floor(hpRatio * bro.stats.stamina));
+
+  for (const entry of newSpecies.learnset) {
+    if (entry.level <= bro.level && bro.moves.length < 4) {
+      const alreadyKnows = bro.moves.some((m) => m.moveId === entry.moveId);
+      if (!alreadyKnows) {
+        bro.moves.push({ moveId: entry.moveId, currentPP: MOVE_MAP[entry.moveId]?.pp ?? 10 });
+      }
+    }
+  }
+
+  return bro;
 }
 
 export function healBro(bro: SavedBro): SavedBro {
@@ -150,7 +169,7 @@ export function healBro(bro: SavedBro): SavedBro {
     ...bro,
     currentSTA: bro.stats.stamina,
     statusEffect: null,
-    moves: bro.moves.map((m) => ({ ...m, currentPP: 0 })),
+    moves: bro.moves.map((m) => ({ ...m, currentPP: MOVE_MAP[m.moveId]?.pp ?? m.currentPP })),
   };
 }
 

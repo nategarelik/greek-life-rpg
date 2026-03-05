@@ -28,6 +28,7 @@ export class PlayerTurnState implements IBattleState {
         case 'bag': {
           const items = gameState.inventory.getAllItems();
           const battleItems = items.filter((slot) => {
+            if (slot.quantity <= 0) return false;
             const item = ITEM_MAP[slot.itemId];
             return item && (item.category === 'healing' || item.category === 'ball' || item.category === 'battle');
           });
@@ -39,13 +40,14 @@ export class PlayerTurnState implements IBattleState {
             break;
           }
 
-          const itemNames = battleItems.map((slot) => {
-            const item = ITEM_MAP[slot.itemId];
-            return `${item?.name ?? 'Unknown'} x${slot.quantity}`;
-          }).join('\n');
-
-          this.scene.getTextBox().showText(`Items:\n${itemNames}\n\nUsing first item...`).then(() => {
-            this.useItem(battleItems[0]);
+          this.scene.hideBattleMenu();
+          this.scene.showItemSelector((itemId) => {
+            if (itemId === -1) {
+              this.scene.getBattleStateMachine().setState('player_turn');
+              return;
+            }
+            const slot = battleItems.find((s) => s.itemId === itemId);
+            if (slot) this.useItem(slot);
           });
           break;
         }
@@ -53,24 +55,25 @@ export class PlayerTurnState implements IBattleState {
         case 'bros': {
           const party = gameState.party.getParty();
           const activeBroId = this.scene.getPlayerSide().broInstanceId;
-          const availableBros = party.filter(
+          const hasAvailable = party.some(
             (bro) => bro.currentSTA > 0 && bro.instanceId !== activeBroId
           );
 
-          if (availableBros.length === 0) {
+          if (!hasAvailable) {
             this.scene.getTextBox().showText('No other Bros available!').then(() => {
               this.scene.getBattleStateMachine().setState('player_turn');
             });
             break;
           }
 
-          const broList = availableBros.map((bro) => {
-            const species = BRO_MAP[bro.speciesId];
-            return `${bro.nickname ?? species?.name ?? 'Unknown'} Lv${bro.level} ${bro.currentSTA}/${bro.stats.stamina} STA`;
-          }).join('\n');
-
-          this.scene.getTextBox().showText(`Switch to:\n${broList}\n\nSwitching to first available...`).then(() => {
-            this.switchBro(availableBros[0]);
+          this.scene.hideBattleMenu();
+          this.scene.showPartySelector((partyIndex) => {
+            if (partyIndex === -1) {
+              this.scene.getBattleStateMachine().setState('player_turn');
+              return;
+            }
+            const selectedBro = party[partyIndex];
+            if (selectedBro) this.switchBro(selectedBro);
           });
           break;
         }
@@ -161,5 +164,7 @@ export class PlayerTurnState implements IBattleState {
   exit(): void {
     this.scene.hideBattleMenu();
     this.scene.hideMoveSelector();
+    this.scene.hideItemSelector();
+    this.scene.hidePartySelector();
   }
 }

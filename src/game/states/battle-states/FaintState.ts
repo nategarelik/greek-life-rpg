@@ -38,6 +38,22 @@ export class FaintState implements IBattleState {
 
     this.scene.time.delayedCall(700, () => {
       this.scene.getTextBox().showText(`${enemyName} fainted!`).then(() => {
+        const config = this.scene.getConfig();
+        const isTrainerBattle = !config.isWild;
+
+        if (isTrainerBattle) {
+          const hasMore = this.scene.advanceEnemyBro();
+          if (hasMore) {
+            const nextName = this.scene.getEnemySide().name;
+            const trainerName = config.trainerName ?? 'Trainer';
+            this.scene.getEnemySprite().setAlpha(1);
+            this.scene.getTextBox().showText(`${trainerName} sent out ${nextName}!`).then(() => {
+              this.scene.getBattleStateMachine().setState('player_turn');
+            });
+            return;
+          }
+        }
+
         this.scene.getBattleStateMachine().setState('victory');
       });
     });

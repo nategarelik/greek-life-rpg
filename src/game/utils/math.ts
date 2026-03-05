@@ -27,13 +27,20 @@ export function calculateCatchRate(
   currentSTA: number,
   speciesCatchRate: number,
   ballModifier: number,
+  statusEffect?: import('../../types/moves').StatusEffect | null,
 ): number {
-  const a = ((3 * maxSTA - 2 * currentSTA) * speciesCatchRate * ballModifier) / (3 * maxSTA);
+  // Gen III status multiplier: asleep/frozen = 2x, poisoned/paralyzed/burned = 1.5x
+  let statusBonus = 1;
+  if (statusEffect === 'passed_out') statusBonus = 2;
+  else if (statusEffect === 'hungover' || statusEffect === 'cancelled') statusBonus = 1.5;
+
+  const a = ((3 * maxSTA - 2 * currentSTA) * speciesCatchRate * ballModifier) / (3 * maxSTA) * statusBonus;
   return Math.min(255, Math.max(0, a));
 }
 
+/** Medium Fast XP curve (n-cubed, matching Pokemon Gen III) */
 export function xpForLevel(level: number): number {
-  return Math.floor((4 * level * level * level) / 5);
+  return level * level * level;
 }
 
 export function calculateXPGain(

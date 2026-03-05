@@ -14,22 +14,19 @@ import { CatchState } from '@/game/states/battle-states/CatchState';
 import { FleeState } from '@/game/states/battle-states/FleeState';
 import { BRO_MAP } from '@/data/bros';
 import { MOVE_MAP } from '@/data/moves';
+import { ITEM_MAP } from '@/data/items';
+import { TYPE_COLORS } from '@/data/constants';
 import { gameState } from '@/game/GameState';
-import { addXP, createWildBro } from '@/game/entities/BroInstance';
+import { createWildBro, calculateStatsForLevel, generateRandomIVs } from '@/game/entities/BroInstance';
 import { DefeatState } from '@/game/states/battle-states/DefeatState';
+import { GlowUpState } from '@/game/states/battle-states/GlowUpState';
 import type { SavedBro } from '@/types/save';
 
 type MenuSelection = 'fight' | 'bag' | 'bros' | 'run';
 
-interface ExtendedParticipant extends BattleParticipant {
-  broType: string;
-  expYield: number;
-  currentXP: number;
-}
-
 export class BattleScene extends Phaser.Scene {
-  private playerSide!: ExtendedParticipant;
-  private enemySide!: ExtendedParticipant;
+  private playerSide!: BattleParticipant;
+  private enemySide!: BattleParticipant;
   private playerAction!: BattleAction;
   private enemyAction!: BattleAction;
   private battleSystem!: BattleSystem;
@@ -42,10 +39,15 @@ export class BattleScene extends Phaser.Scene {
   private battleMenu!: Phaser.GameObjects.Container;
   private moveSelector!: Phaser.GameObjects.Container;
   private moveSlotTexts: Phaser.GameObjects.Text[] = [];
+  private itemSelector!: Phaser.GameObjects.Container;
+  private partySelector!: Phaser.GameObjects.Container;
+  private itemSelectorCallback?: (itemId: number) => void;
+  private partySelectorCallback?: (partyIndex: number) => void;
   private catchState!: CatchState;
   private menuCallback?: (selection: MenuSelection) => void;
   private moveSelectorCallback?: (index: number) => void;
   private config!: BattleConfig;
+  private currentEnemyIndex = 0;
 
   constructor() {
     super({ key: 'BattleScene' });
@@ -87,6 +89,8 @@ export class BattleScene extends Phaser.Scene {
     // Build menus (hidden initially)
     this.battleMenu = this.createBattleMenu();
     this.moveSelector = this.createMoveSelector();
+    this.itemSelector = this.createItemSelectorContainer();
+    this.partySelector = this.createPartySelectorContainer();
 
     // Initialize systems
     this.battleSystem = new BattleSystem(this.playerSide, this.enemySide, data.isWild);
@@ -102,6 +106,7 @@ export class BattleScene extends Phaser.Scene {
     this.stateMachine.addState('catch', this.catchState);
     this.stateMachine.addState('flee', new FleeState(this));
     this.stateMachine.addState('defeat', new DefeatState(this));
+    this.stateMachine.addState('glow_up', new GlowUpState(this));
 
     this.stateMachine.setState('intro');
   }
@@ -136,11 +141,11 @@ export class BattleScene extends Phaser.Scene {
     return this.stateMachine;
   }
 
-  getPlayerSide(): ExtendedParticipant {
+  getPlayerSide(): BattleParticipant {
     return this.playerSide;
   }
 
-  getEnemySide(): ExtendedParticipant {
+  getEnemySide(): BattleParticipant {
     return this.enemySide;
   }
 
@@ -182,9 +187,26 @@ export class BattleScene extends Phaser.Scene {
       const moveEntry = this.playerSide.moves[i];
       if (moveEntry) {
         const move = MOVE_MAP[moveEntry.moveId];
-        this.moveSlotTexts[i].setText(move?.name ?? '--');
+        if (move) {
+          const ppText = `${moveEntry.currentPP}/${move.pp}`;
+          this.moveSlotTexts[i].setText(`${move.name} ${ppText}`);
+          const typeColor = TYPE_COLORS[move.type] ?? '#ffffff';
+          if (moveEntry.currentPP <= 0) {
+            this.moveSlotTexts[i].setColor('#666666');
+            this.moveSlotTexts[i].disableInteractive();
+          } else {
+            this.moveSlotTexts[i].setColor(typeColor);
+            this.moveSlotTexts[i].setInteractive({ useHandCursor: true });
+          }
+        } else {
+          this.moveSlotTexts[i].setText('--');
+          this.moveSlotTexts[i].setColor('#666666');
+          this.moveSlotTexts[i].disableInteractive();
+        }
       } else {
         this.moveSlotTexts[i].setText('--');
+        this.moveSlotTexts[i].setColor('#666666');
+        this.moveSlotTexts[i].disableInteractive();
       }
     }
     this.moveSelector.setVisible(true);
@@ -195,19 +217,9 @@ export class BattleScene extends Phaser.Scene {
     this.moveSelectorCallback = undefined;
   }
 
-  applyLevelUp(newLevel: number): void {
-    this.playerSide.level = newLevel;
-    this.syncPlayerXpToParty();
-  }
-
   syncPlayerXpToParty(): void {
     const activeBro = gameState.party.getFirstNonFainted();
     if (!activeBro) return;
-
-    const xpGained = this.playerSide.currentXP;
-    if (xpGained > 0) {
-      addXP(activeBro, xpGained);
-    }
 
     activeBro.currentSTA = this.playerSide.currentSTA;
     activeBro.level = this.playerSide.level;
@@ -242,7 +254,7 @@ export class BattleScene extends Phaser.Scene {
       stats: { ...bro.stats },
       statStages: { stamina: 0, hype: 0, clout: 0, chill: 0, drip: 0, vibes: 0 },
       moves: bro.moves.length > 0
-        ? bro.moves.map((m) => ({ moveId: m.moveId, currentPP: Math.max(m.currentPP, 10) }))
+        ? bro.moves.map((m) => ({ moveId: m.moveId, currentPP: m.currentPP }))
         : [{ moveId: 1, currentPP: 20 }],
       statusEffect: bro.statusEffect,
       statusTurns: 0,
@@ -256,6 +268,38 @@ export class BattleScene extends Phaser.Scene {
     this.playerSprite.setTexture(playerTypeKey);
     this.updateHealthBars();
     this.battleSystem = new BattleSystem(this.playerSide, this.enemySide, this.config.isWild);
+  }
+
+  // Evolution support — will be populated by GlowUpState (Phase 2)
+  private evolveTargetData?: { bro: SavedBro; toSpeciesId: number };
+
+  setEvolveTarget(data: { bro: SavedBro; toSpeciesId: number }): void {
+    this.evolveTargetData = data;
+  }
+
+  getEvolveTarget(): { bro: SavedBro; toSpeciesId: number } | undefined {
+    return this.evolveTargetData;
+  }
+
+  hasState(name: string): boolean {
+    return this.stateMachine.hasState(name);
+  }
+
+  getConfig(): BattleConfig {
+    return this.config;
+  }
+
+  advanceEnemyBro(): boolean {
+    this.currentEnemyIndex++;
+    if (this.currentEnemyIndex >= this.config.enemyParty.length) return false;
+
+    this.enemySide = this.buildEnemyParticipant(this.config.enemyParty[this.currentEnemyIndex]);
+    this.battleSystem = new BattleSystem(this.playerSide, this.enemySide, this.config.isWild);
+
+    const enemyTypeKey = `bro-${this.enemySide.broType}`;
+    this.enemySprite.setTexture(enemyTypeKey);
+    this.updateHealthBars();
+    return true;
   }
 
   endBattle(outcome: 'victory' | 'defeat' | 'flee'): void {
@@ -272,37 +316,165 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
+  showItemSelector(callback: (itemId: number) => void): void {
+    this.itemSelectorCallback = callback;
+    this.itemSelector.removeAll(true);
+    const { width } = this.cameras.main;
+    const panelW = 260;
+    const panelX = (width - panelW) / 2;
+
+    const allItems = gameState.inventory.getAllItems().filter((slot) => {
+      if (slot.quantity <= 0) return false;
+      const item = ITEM_MAP[slot.itemId];
+      return item && (item.category === 'healing' || item.category === 'battle' || item.category === 'ball');
+    });
+
+    const rowH = 32;
+    const rows = allItems.length + 1; // +1 for Cancel
+    const panelH = 40 + rows * rowH;
+
+    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x000000, 0.92).setOrigin(0);
+    bg.setStrokeStyle(2, 0xffffff, 0.7);
+    this.itemSelector.add(bg);
+    this.itemSelector.setPosition(panelX, 60);
+
+    const title = this.add.text(10, 8, 'BAG', { fontSize: '16px', color: '#ffdd44', fontFamily: 'monospace' });
+    this.itemSelector.add(title);
+
+    allItems.forEach((slot, idx) => {
+      const item = ITEM_MAP[slot.itemId];
+      const label = `${item?.name ?? 'Unknown'}  x${slot.quantity}`;
+      const txt = this.add.text(14, 36 + idx * rowH, label, {
+        fontSize: '14px', color: '#ffffff', fontFamily: 'monospace',
+      }).setInteractive({ useHandCursor: true });
+      txt.on('pointerover', () => txt.setColor('#ffdd44'));
+      txt.on('pointerout', () => txt.setColor('#ffffff'));
+      txt.on('pointerdown', () => {
+        this.hideItemSelector();
+        this.itemSelectorCallback?.(slot.itemId);
+      });
+      this.itemSelector.add(txt);
+    });
+
+    const cancelTxt = this.add.text(14, 36 + allItems.length * rowH, '[Cancel]', {
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
+    }).setInteractive({ useHandCursor: true });
+    cancelTxt.on('pointerover', () => cancelTxt.setColor('#ffdd44'));
+    cancelTxt.on('pointerout', () => cancelTxt.setColor('#aaaaaa'));
+    cancelTxt.on('pointerdown', () => {
+      this.hideItemSelector();
+      this.itemSelectorCallback?.(-1);
+    });
+    this.itemSelector.add(cancelTxt);
+
+    this.itemSelector.setVisible(true);
+  }
+
+  hideItemSelector(): void {
+    this.itemSelector.setVisible(false);
+    this.itemSelectorCallback = undefined;
+  }
+
+  showPartySelector(callback: (partyIndex: number) => void): void {
+    this.partySelectorCallback = callback;
+    this.partySelector.removeAll(true);
+    const { width } = this.cameras.main;
+    const panelW = 300;
+    const panelX = (width - panelW) / 2;
+
+    const party = gameState.party.getParty();
+    const activeBroId = this.playerSide.broInstanceId;
+
+    const rowH = 36;
+    const rows = party.length + 1; // +1 for Cancel
+    const panelH = 44 + rows * rowH;
+
+    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x000000, 0.92).setOrigin(0);
+    bg.setStrokeStyle(2, 0xffffff, 0.7);
+    this.partySelector.add(bg);
+    this.partySelector.setPosition(panelX, 40);
+
+    const title = this.add.text(10, 8, 'PARTY', { fontSize: '16px', color: '#ffdd44', fontFamily: 'monospace' });
+    this.partySelector.add(title);
+
+    party.forEach((bro, idx) => {
+      const species = BRO_MAP[bro.speciesId];
+      const name = bro.nickname ?? species?.name ?? 'Unknown';
+      const isActive = bro.instanceId === activeBroId;
+      const isFainted = bro.currentSTA <= 0;
+      const hpPct = Math.max(0, bro.currentSTA / bro.stats.stamina);
+      const hpBars = Math.round(hpPct * 8);
+      const hpBar = '█'.repeat(hpBars) + '░'.repeat(8 - hpBars);
+      const prefix = isActive ? '► ' : '  ';
+      const label = `${prefix}${name} Lv.${bro.level}  ${hpBar}`;
+
+      let color = '#ffffff';
+      if (isActive) color = '#aaffaa';
+      if (isFainted) color = '#666666';
+
+      const txt = this.add.text(10, 36 + idx * rowH, label, {
+        fontSize: '13px', color, fontFamily: 'monospace',
+      });
+
+      if (!isActive && !isFainted) {
+        txt.setInteractive({ useHandCursor: true });
+        txt.on('pointerover', () => txt.setColor('#ffdd44'));
+        txt.on('pointerout', () => txt.setColor(color));
+        txt.on('pointerdown', () => {
+          this.hidePartySelector();
+          this.partySelectorCallback?.(idx);
+        });
+      }
+      this.partySelector.add(txt);
+    });
+
+    const cancelTxt = this.add.text(10, 36 + party.length * rowH, '[Cancel]', {
+      fontSize: '13px', color: '#aaaaaa', fontFamily: 'monospace',
+    }).setInteractive({ useHandCursor: true });
+    cancelTxt.on('pointerover', () => cancelTxt.setColor('#ffdd44'));
+    cancelTxt.on('pointerout', () => cancelTxt.setColor('#aaaaaa'));
+    cancelTxt.on('pointerdown', () => {
+      this.hidePartySelector();
+      this.partySelectorCallback?.(-1);
+    });
+    this.partySelector.add(cancelTxt);
+
+    this.partySelector.setVisible(true);
+  }
+
+  hidePartySelector(): void {
+    this.partySelector.setVisible(false);
+    this.partySelectorCallback = undefined;
+  }
+
   // --- Private builders ---
 
-  private buildEnemyParticipant(config: { speciesId: number; level: number }): ExtendedParticipant {
+  private buildEnemyParticipant(config: { speciesId: number; level: number }): BattleParticipant {
     const species = BRO_MAP[config.speciesId];
     const name = species?.name ?? `Bro #${config.speciesId}`;
     const level = config.level;
 
-    const maxSTA = Math.floor(((species?.baseStats.stamina ?? 45) * 2 * level) / 100) + level + 10;
+    const ivs = generateRandomIVs();
+    const baseStats = species?.baseStats ?? { stamina: 45, hype: 45, clout: 45, chill: 45, drip: 45, vibes: 45 };
+    const stats = species
+      ? calculateStatsForLevel(species, level, ivs)
+      : calculateStatsForLevel({ id: config.speciesId, name, type: 'jock', baseStats, description: '', learnset: [], catchRate: 128, expYield: 64, spriteKey: 'bro-jock' }, level, ivs);
 
     const learnedMoves = (species?.learnset ?? [])
       .filter((entry) => entry.level <= level)
       .slice(-4)
-      .map((entry) => ({ moveId: entry.moveId, currentPP: 20 }));
+      .map((entry) => ({ moveId: entry.moveId, currentPP: MOVE_MAP[entry.moveId]?.pp ?? 20 }));
 
-    const moves = learnedMoves.length > 0 ? learnedMoves : [{ moveId: 1, currentPP: 20 }];
+    const moves = learnedMoves.length > 0 ? learnedMoves : [{ moveId: 1, currentPP: MOVE_MAP[1]?.pp ?? 20 }];
 
     return {
       broInstanceId: `enemy-${Date.now()}`,
       speciesId: config.speciesId,
       name,
       level,
-      currentSTA: maxSTA,
-      maxSTA,
-      stats: {
-        stamina: species?.baseStats.stamina ?? 45,
-        hype: species?.baseStats.hype ?? 45,
-        clout: species?.baseStats.clout ?? 45,
-        chill: species?.baseStats.chill ?? 45,
-        drip: species?.baseStats.drip ?? 45,
-        vibes: species?.baseStats.vibes ?? 45,
-      },
+      currentSTA: stats.stamina,
+      maxSTA: stats.stamina,
+      stats,
       statStages: {
         stamina: 0, hype: 0, clout: 0, chill: 0, drip: 0, vibes: 0,
       },
@@ -316,7 +488,7 @@ export class BattleScene extends Phaser.Scene {
     };
   }
 
-  private buildPlayerParticipant(): ExtendedParticipant {
+  private buildPlayerParticipant(): BattleParticipant {
     const activeBro = gameState.party.getFirstNonFainted();
 
     if (!activeBro) {
@@ -356,7 +528,7 @@ export class BattleScene extends Phaser.Scene {
       stats: { ...activeBro.stats },
       statStages: { stamina: 0, hype: 0, clout: 0, chill: 0, drip: 0, vibes: 0 },
       moves: activeBro.moves.length > 0
-        ? activeBro.moves.map((m) => ({ moveId: m.moveId, currentPP: Math.max(m.currentPP, 10) }))
+        ? activeBro.moves.map((m) => ({ moveId: m.moveId, currentPP: m.currentPP }))
         : [{ moveId: 1, currentPP: 20 }],
       statusEffect: activeBro.statusEffect,
       statusTurns: 0,
@@ -411,6 +583,20 @@ export class BattleScene extends Phaser.Scene {
     return container;
   }
 
+  private createItemSelectorContainer(): Phaser.GameObjects.Container {
+    const container = this.add.container(0, 0);
+    container.setVisible(false);
+    container.setDepth(30);
+    return container;
+  }
+
+  private createPartySelectorContainer(): Phaser.GameObjects.Container {
+    const container = this.add.container(0, 0);
+    container.setVisible(false);
+    container.setDepth(30);
+    return container;
+  }
+
   private createMoveSelector(): Phaser.GameObjects.Container {
     const { width, height } = this.cameras.main;
     const container = this.add.container(0, height - 90);
@@ -426,6 +612,8 @@ export class BattleScene extends Phaser.Scene {
         fontSize: '15px', color: '#ffffff', fontFamily: 'monospace',
       }).setInteractive({ useHandCursor: true });
       text.on('pointerdown', () => {
+        const moveEntry = this.playerSide.moves[i];
+        if (moveEntry && moveEntry.currentPP <= 0) return;
         this.moveSelectorCallback?.(i);
       });
       return text;
@@ -435,10 +623,13 @@ export class BattleScene extends Phaser.Scene {
     container.setVisible(false);
     container.setDepth(20);
 
-    // Key shortcuts
+    // Key shortcuts — skip 0-PP moves
     ['ONE', 'TWO', 'THREE', 'FOUR'].forEach((key, i) => {
       this.input.keyboard!.on(`keydown-${key}`, () => {
-        if (container.visible) this.moveSelectorCallback?.(i);
+        if (!container.visible) return;
+        const moveEntry = this.playerSide.moves[i];
+        if (moveEntry && moveEntry.currentPP <= 0) return;
+        this.moveSelectorCallback?.(i);
       });
     });
 

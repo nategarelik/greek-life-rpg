@@ -70,7 +70,7 @@ export const ITEMS: Item[] = [
     category: 'battle',
     description: 'A greasy breakfast and Gatorade. Cures the hungover status.',
     price: 150,
-    curesStatus: false,
+    curesStatus: true,
   },
   {
     id: 9,
