@@ -23,6 +23,11 @@ export const StartGame = (parent: string): Phaser.Game => {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
+    input: {
+      keyboard: {
+        target: window,
+      },
+    },
     physics: {
       default: 'arcade',
       arcade: { debug: false },

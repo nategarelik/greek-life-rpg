@@ -17,6 +17,14 @@ export const PhaserGame = forwardRef<PhaserGameRef>((_props, ref) => {
 
     gameRef.current = StartGame('game-container');
 
+    // Ensure the canvas gets focus so keyboard input works
+    const canvas = containerRef.current.querySelector('canvas');
+    if (canvas) {
+      canvas.setAttribute('tabindex', '0');
+      canvas.style.outline = 'none';
+      canvas.focus();
+    }
+
     if (ref) {
       if (typeof ref === 'function') {
         ref({ game: gameRef.current });

@@ -228,30 +228,38 @@ function generateTileTextures(scene: Phaser.Scene): void {
 }
 
 function generateTilesetStrip(scene: Phaser.Scene): void {
-  // Create a 7-tile horizontal strip: grass, path, wall, encounter, building, water, door
-  // Each tile is 32x32, total strip: 224x32
-  const tileKeys = [
-    'tile-grass',
-    'tile-path',
-    'tile-wall',
-    'tile-encounter',
-    'tile-building',
-    'tile-water',
-    'tile-door',
-  ];
-
   if (scene.textures.exists('tileset-campus')) return;
 
-  const rt = scene.add.renderTexture(0, 0, tileKeys.length * 32, 32).setVisible(false);
+  // Build 7-tile strip (224x32) directly with Graphics — more reliable than RenderTexture compositing
+  const g = makeGraphics(scene);
+  const colors = [0x66aa44, 0xccaa77, 0x666666, 0x448833, 0x885533, 0x4477cc, 0x553311];
 
-  tileKeys.forEach((key, i) => {
-    const img = scene.add.image(i * 32 + 16, 16, key).setVisible(false);
-    rt.draw(img, i * 32, 0);
-    img.destroy();
+  colors.forEach((color, i) => {
+    g.fillStyle(color);
+    g.fillRect(i * 32, 0, 32, 32);
   });
 
-  rt.saveTexture('tileset-campus');
-  rt.destroy();
+  // Add encounter grass dots on tile index 3
+  g.fillStyle(0x55aa44);
+  g.fillCircle(3 * 32 + 8, 8, 3);
+  g.fillCircle(3 * 32 + 20, 14, 3);
+  g.fillCircle(3 * 32 + 10, 22, 3);
+  g.fillCircle(3 * 32 + 24, 26, 3);
+
+  // Wall border on tile index 2
+  g.lineStyle(1, 0x444444);
+  g.strokeRect(2 * 32, 0, 32, 32);
+
+  // Building inner on tile index 4
+  g.fillStyle(0x664422);
+  g.fillRect(4 * 32 + 2, 2, 28, 28);
+
+  // Door frame on tile index 6
+  g.lineStyle(3, 0x886644);
+  g.strokeRect(6 * 32 + 4, 4, 24, 28);
+
+  g.generateTexture('tileset-campus', 7 * 32, 32);
+  g.destroy();
 }
 
 function generateUiTextures(scene: Phaser.Scene): void {

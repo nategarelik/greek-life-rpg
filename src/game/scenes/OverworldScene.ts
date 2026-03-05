@@ -43,7 +43,6 @@ export class OverworldScene extends Phaser.Scene {
           sprite: this.playerSprite as unknown as Phaser.GameObjects.Sprite,
           startPosition: { x: 15, y: 15 },
           speed: 4,
-          charLayer: 'ground',
         },
       ],
     });
