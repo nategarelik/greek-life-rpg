@@ -52,10 +52,7 @@ const MAP_WIDTH = 30;
 const MAP_HEIGHT = 30;
 const TILE_SIZE = 32;
 
-const WALKABLE_TILES: number[] = [TILE.GRASS, TILE.PATH, TILE.ENCOUNTER, TILE.EXIT];
 const COLLISION_TILES: number[] = [TILE.WALL, TILE.BUILDING];
-
-void WALKABLE_TILES;
 
 export const ZONE_CONFIGS: Record<string, ZoneConfig> = {
   'freshman-quad': {

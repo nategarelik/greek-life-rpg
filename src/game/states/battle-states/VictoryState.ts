@@ -125,8 +125,6 @@ export class VictoryState implements IBattleState {
       // Evolution will be handled by GlowUpState (Phase 2)
       // For now, just store the info and end battle
       this.scene.setEvolveTarget?.({ bro: activeBro, toSpeciesId: result.evolvesToSpeciesId });
-      const glowUpState = this.scene.getBattleStateMachine().getCurrentStateName();
-      // Check if glow_up state is registered
       if (this.scene.hasState?.('glow_up')) {
         this.scene.getBattleStateMachine().setState('glow_up');
       } else {

@@ -8,8 +8,6 @@ import { EncounterSystem } from '@/game/systems/EncounterSystem';
 import { ENCOUNTER_MAP } from '@/data/encounters';
 import { TRAINER_MAP } from '@/data/trainers';
 
-// Tile index used to identify encounter tiles from mapGenerator
-const ENCOUNTER_TILE_INDEX = 3;
 const TILE_SIZE = 32;
 const TUTORIAL_DISPLAY_DURATION = 3000;
 
@@ -87,7 +85,7 @@ export class OverworldScene extends Phaser.Scene {
     const self = this as unknown as OverworldSceneWithPlugin;
     const { width, height } = this.cameras.main;
 
-    const { tilemap, groundLayer, collisionLayer, encounterTiles, exits } = generateZoneMap(this, this.currentZoneId);
+    const { tilemap, encounterTiles, exits } = generateZoneMap(this, this.currentZoneId);
 
     this.encounterTiles = new Set(encounterTiles.map((t) => `${t.x},${t.y}`));
     this.exitTiles = exits;
@@ -134,10 +132,6 @@ export class OverworldScene extends Phaser.Scene {
       gameState.storyFlags['tutorialShown'] = true;
       this.showTutorialOverlay(width, height);
     }
-
-    void groundLayer;
-    void collisionLayer;
-    void ENCOUNTER_TILE_INDEX;
   }
 
   update(): void {
@@ -300,11 +294,10 @@ export class OverworldScene extends Phaser.Scene {
     if (!config) return;
 
     for (const pos of config.npcSpawns) {
-      const textureKey = pos.isTrainer ? 'npc' : 'npc';
       const sprite = this.add.image(
         pos.x * TILE_SIZE + TILE_SIZE / 2,
         pos.y * TILE_SIZE + TILE_SIZE / 2,
-        textureKey,
+        'npc',
       ).setDepth(9);
 
       this.npcs.push({

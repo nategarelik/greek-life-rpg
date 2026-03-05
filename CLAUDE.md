@@ -43,7 +43,7 @@ BootScene → PreloaderScene → TitleScene → IntroScene → OverworldScene
 
 IntroState → PlayerTurnState ↔ EnemyTurnState → AttackState → FaintState → VictoryState/DefeatState
 
-Also: CatchState, FleeState. Each state holds a reference to BattleScene and transitions via `setState()`.
+Also: CatchState, FleeState, GlowUpState (evolution animation). Each state holds a reference to BattleScene and transitions via `setState()`.
 
 ### Global State (Singleton)
 
@@ -51,12 +51,14 @@ Also: CatchState, FleeState. Each state holds a reference to BattleScene and tra
 - `party: PartySystem` (max 6 Bros, storage for extras)
 - `inventory: InventorySystem` (slots with itemId + quantity)
 - Player metadata: name, money, badges, storyFlags, defeatedTrainers, currentZoneId
+- Zone traversal with badge-gated exits between 5 zones
 
 ### Entity Pattern
 
 `BroInstance.ts` uses **pure functions** (not classes):
 - `createBroInstance(species, level, ivs?)` → `SavedBro`
-- `createStarterBro(speciesId)` / `createWildBro(speciesId, level)`
+- `createStarterBro(speciesId, level)` / `createWildBro(speciesId, level)`
+- `evolveBro(bro, toSpeciesId)` — handles species change, stat recalc, and move inheritance
 - `calculateStatsForLevel(species, level, ivs)` — stat formula with IVs (0-31)
 - `addXP(bro, amount)` → `LevelUpResult | null`
 
@@ -71,7 +73,7 @@ export const BRO_SPECIES: BroSpecies[] = [...];
 export const BRO_MAP: Record<number, BroSpecies> = Object.fromEntries(BRO_SPECIES.map(b => [b.id, b]));
 ```
 
-Same pattern for `MOVES/MOVE_MAP`, `ITEMS/ITEM_MAP`. Always use the `_MAP` variant for ID lookups.
+Same pattern for `MOVES/MOVE_MAP`, `ITEMS/ITEM_MAP`, `TRAINERS/TRAINER_MAP`, `ENCOUNTERS/ENCOUNTER_MAP`. Always use the `_MAP` variant for ID lookups.
 
 ### Type System
 
@@ -92,6 +94,26 @@ Systems are stateful managers instantiated by GameState or BattleScene:
 - **EncounterSystem**: wild encounter triggers (15% per encounter tile, 3-step minimum)
 - **SaveSystem**: slot-based save/load (3 slots)
 
+### Multi-Zone System
+
+5 zones connected via exit tiles with badge-gating:
+- `freshman-quad` (0 badges) — starter area, 4 exits
+- `campus-library` (1 badge) — nerd-heavy encounters
+- `campus-gym` (1 badge) — jock-heavy encounters
+- `quad-park` (0 badges) — stoner/scene encounters
+- `greek-row` (3 badges) — endgame area
+
+Zone configs and map builders live in `utils/mapGenerator.ts` (`ZONE_CONFIGS`, `generateZoneMap()`).
+
+### Trainer Battles
+
+Trainers are NPCs with `isTrainer: true` and a `trainerId`. Trainer data in `data/trainers.ts` includes:
+- Pre/post battle dialogue
+- `BattleConfig` with multi-bro enemy party
+- Badge reward on victory
+
+Defeated trainers are tracked in `gameState.defeatedTrainers`. VictoryState awards badges and marks trainers as defeated.
+
 ### Damage Formula
 
 Located in `utils/math.ts`:
@@ -106,3 +128,4 @@ Located in `utils/math.ts`:
 - **Constants**: defined in `data/constants.ts` — TILE_SIZE, MAX_PARTY_SIZE, MAX_LEVEL, damage multipliers
 - **Assets**: procedurally generated as placeholders in BootScene via `assetGenerator.ts`
 - **Maps**: procedurally generated via `mapGenerator.ts` (no Tiled files yet)
+- **Evolution**: `evolveBro()` in `BroInstance.ts`; triggered via `GlowUpState` after level-up in battle

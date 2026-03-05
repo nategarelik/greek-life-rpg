@@ -96,13 +96,6 @@ export class BattleSystem {
         ? defender.stats.chill * getStatModMultiplier(defender.statStages.chill)
         : defender.stats.drip * getStatModMultiplier(defender.statStages.drip);
 
-      // We need defender's type — look it up by speciesId
-      // For effectiveness we pass the move type and defender type
-      // Since BattleParticipant doesn't store type directly, we'll resolve via BROS_MAP
-      // For now we pass the moveType as both (neutral) — the caller can enrich this
-      // Actually, the BattleScene should pass the correct species type.
-      // We'll store broType on participant via speciesId lookup at construction time.
-      // For now, read it from the extended participant (see BattleScene).
       const effectiveness = getEffectiveness(move.type, defender.broType);
       const stab = attacker.broType === move.type;
       const critical = isCriticalHit();
@@ -168,8 +161,8 @@ export class BattleSystem {
     const enemySpeed = this.enemySide.stats.vibes * getStatModMultiplier(this.enemySide.statStages.vibes);
 
     // Flee always goes first for player, switch too
-    const playerPriority = this.getActionPriority(playerAction);
-    const enemyPriority = this.getActionPriority(enemyAction);
+    const playerPriority = this.getActionPriority(playerAction, this.playerSide);
+    const enemyPriority = this.getActionPriority(enemyAction, this.enemySide);
 
     let playerFirst: boolean;
     if (playerPriority !== enemyPriority) {
@@ -354,11 +347,11 @@ export class BattleSystem {
     return { xpGained, leveledUp, newLevel: level, newMoves };
   }
 
-  private getActionPriority(action: BattleAction): number {
+  private getActionPriority(action: BattleAction, participant: BattleParticipant): number {
     if (action.type === 'flee' || action.type === 'switch') return 10;
     if (action.type === 'item') return 5;
     if (action.type === 'fight') {
-      const moveEntry = this.playerSide.moves[action.moveIndex];
+      const moveEntry = participant.moves[action.moveIndex];
       if (moveEntry) {
         const move = MOVE_MAP[moveEntry.moveId] as Move | undefined;
         return move?.priority ?? 0;

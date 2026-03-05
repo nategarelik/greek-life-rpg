@@ -154,7 +154,7 @@ src/
 
 ## Development Status
 
-**Current version:** 0.1.0 (Phases 1-2)
+**Current version:** 0.2.0 (Phases 1-4)
 
 ### Implemented
 
@@ -165,23 +165,25 @@ src/
 - 18 Bro species across 6 types with 3-stage evolution chains
 - 24 moves with type effectiveness, status effects, stat modifiers, and recoil
 - Party management (6-Bro limit) with real party integration in battles
-- Inventory system
+- Inventory system with full item usage in battle (healing, status cures, catch balls)
 - Wild encounter system
-- Catch mechanics
+- Catch mechanics with multiple ball types
 - NPC dialogue system (face NPC + Space to talk)
 - Pause menu with party viewer, bag, and save placeholder
 - Overworld HUD with zone labels and tutorial overlay
 - Stat recalculation on level up
+- Evolution (Glow-Up) system with animated transitions
+- Multi-zone map system (5 zones with badge-gated travel)
+- Trainer battles with multi-bro enemy parties
+- Badge system with 5 trainers across all zones
+- In-battle party switching and item usage
 
 ### Planned
 
-- Trainer battles
 - Story progression and quest system
-- Evolution triggers
 - Full save/load persistence
 - Audio (BGM + SFX)
-- Full item usage in battle
-- Gym leaders and badge system
+- Move replacement UI when moveset is full
 
 ## License
 

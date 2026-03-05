@@ -1,6 +1,5 @@
 import type { IBattleState } from '../BattleStateMachine';
 import type { BattleScene } from '../../scenes/BattleScene';
-import { slideSprite, fadeSprite } from '../../utils/animationHelper';
 
 export class FaintState implements IBattleState {
   private scene: BattleScene;
