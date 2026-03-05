@@ -9,6 +9,7 @@ import { BattleScene } from './scenes/BattleScene';
 import { BattleUIScene } from './scenes/BattleUIScene';
 import { DialogScene } from './scenes/DialogScene';
 import { TransitionScene } from './scenes/TransitionScene';
+import { PauseMenuScene } from './scenes/PauseMenuScene';
 
 export { EventBus } from './EventBus';
 
@@ -52,6 +53,7 @@ export const StartGame = (parent: string): Phaser.Game => {
       BattleUIScene,
       DialogScene,
       TransitionScene,
+      PauseMenuScene,
     ],
   });
 };

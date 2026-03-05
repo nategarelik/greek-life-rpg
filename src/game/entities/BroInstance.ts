@@ -1,5 +1,6 @@
 import type { BroSpecies, BroStats } from '@/types/bros';
 import type { SavedBro } from '@/types/save';
+import { BRO_MAP } from '@/data/bros';
 
 export interface LevelUpResult {
   newLevel: number;
@@ -84,13 +85,13 @@ export function createBroInstance(species: BroSpecies, level: number, ivs?: BroS
 }
 
 export function createWildBro(speciesId: number, level: number): SavedBro {
-  const placeholder = buildPlaceholderSpecies(speciesId);
-  return createBroInstance(placeholder, level, generateRandomIVs());
+  const species = BRO_MAP[speciesId] ?? buildPlaceholderSpecies(speciesId);
+  return createBroInstance(species, level, generateRandomIVs());
 }
 
 export function createStarterBro(speciesId: number, level: number): SavedBro {
-  const placeholder = buildPlaceholderSpecies(speciesId);
-  return createBroInstance(placeholder, level, generateGoodIVs());
+  const species = BRO_MAP[speciesId] ?? buildPlaceholderSpecies(speciesId);
+  return createBroInstance(species, level, generateGoodIVs());
 }
 
 // XP thresholds: medium-fast curve — level^3
@@ -113,16 +114,32 @@ export function addXP(bro: SavedBro, amount: number): LevelUpResult | null {
   bro.currentXP = newXP - nextLevelXP;
   bro.level = oldLevel + 1;
 
-  const movesLearned: number[] = [];
-  // Check if any moves are learned at the new level but require species data
-  // We return the level; callers with species data can check learnset
+  const speciesForStats = BRO_MAP[bro.speciesId];
+  if (speciesForStats) {
+    const oldMaxSTA = bro.stats.stamina;
+    const newStats = calculateStatsForLevel(speciesForStats, bro.level, bro.ivs);
+    bro.currentSTA = Math.min(bro.currentSTA + (newStats.stamina - oldMaxSTA), newStats.stamina);
+    bro.stats = newStats;
+  }
 
-  const canEvolve = false; // requires species lookup; callers should check
+  const species = BRO_MAP[bro.speciesId];
+  const movesLearned: number[] = [];
+
+  if (species) {
+    for (const entry of species.learnset) {
+      if (entry.level === bro.level) {
+        movesLearned.push(entry.moveId);
+      }
+    }
+  }
+
+  const canEvolve = species?.evolvesTo != null && species.evolveLevel != null && bro.level >= species.evolveLevel;
   const result: LevelUpResult = {
     newLevel: bro.level,
     statsGained: {},
     movesLearned,
     canEvolve,
+    evolvesToSpeciesId: canEvolve ? species!.evolvesTo : undefined,
   };
 
   return result;

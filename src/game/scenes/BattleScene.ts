@@ -13,8 +13,11 @@ import { VictoryState } from '@/game/states/battle-states/VictoryState';
 import { CatchState } from '@/game/states/battle-states/CatchState';
 import { FleeState } from '@/game/states/battle-states/FleeState';
 import { BRO_MAP } from '@/data/bros';
+import { MOVE_MAP } from '@/data/moves';
 import { gameState } from '@/game/GameState';
-import { addXP } from '@/game/entities/BroInstance';
+import { addXP, createWildBro } from '@/game/entities/BroInstance';
+import { DefeatState } from '@/game/states/battle-states/DefeatState';
+import type { SavedBro } from '@/types/save';
 
 type MenuSelection = 'fight' | 'bag' | 'bros' | 'run';
 
@@ -38,6 +41,8 @@ export class BattleScene extends Phaser.Scene {
   private enemySprite!: Phaser.GameObjects.Image;
   private battleMenu!: Phaser.GameObjects.Container;
   private moveSelector!: Phaser.GameObjects.Container;
+  private moveSlotTexts: Phaser.GameObjects.Text[] = [];
+  private catchState!: CatchState;
   private menuCallback?: (selection: MenuSelection) => void;
   private moveSelectorCallback?: (index: number) => void;
   private config!: BattleConfig;
@@ -93,8 +98,10 @@ export class BattleScene extends Phaser.Scene {
     this.stateMachine.addState('attack', new AttackState(this));
     this.stateMachine.addState('faint', new FaintState(this));
     this.stateMachine.addState('victory', new VictoryState(this));
-    this.stateMachine.addState('catch', new CatchState(this));
+    this.catchState = new CatchState(this);
+    this.stateMachine.addState('catch', this.catchState);
     this.stateMachine.addState('flee', new FleeState(this));
+    this.stateMachine.addState('defeat', new DefeatState(this));
 
     this.stateMachine.setState('intro');
   }
@@ -171,6 +178,15 @@ export class BattleScene extends Phaser.Scene {
 
   showMoveSelector(callback: (moveIndex: number) => void): void {
     this.moveSelectorCallback = callback;
+    for (let i = 0; i < 4; i++) {
+      const moveEntry = this.playerSide.moves[i];
+      if (moveEntry) {
+        const move = MOVE_MAP[moveEntry.moveId];
+        this.moveSlotTexts[i].setText(move?.name ?? '--');
+      } else {
+        this.moveSlotTexts[i].setText('--');
+      }
+    }
     this.moveSelector.setVisible(true);
   }
 
@@ -199,7 +215,47 @@ export class BattleScene extends Phaser.Scene {
   }
 
   onCatchSuccess(): void {
-    // Will be connected to party system in integration step
+    const caught = createWildBro(this.enemySide.speciesId, this.enemySide.level);
+    const added = gameState.party.addToParty(caught);
+    if (!added) {
+      const currentStorage = [...gameState.party.getStorage(), caught];
+      gameState.party.setStorage(currentStorage);
+    }
+  }
+
+  getCatchState(): CatchState {
+    return this.catchState;
+  }
+
+  switchActiveBro(bro: SavedBro): void {
+    const species = BRO_MAP[bro.speciesId];
+    const displayName = bro.nickname ?? species?.name ?? `Bro #${bro.speciesId}`;
+    const broType = species?.type ?? 'jock';
+
+    this.playerSide = {
+      broInstanceId: bro.instanceId,
+      speciesId: bro.speciesId,
+      name: displayName,
+      level: bro.level,
+      currentSTA: bro.currentSTA,
+      maxSTA: bro.stats.stamina,
+      stats: { ...bro.stats },
+      statStages: { stamina: 0, hype: 0, clout: 0, chill: 0, drip: 0, vibes: 0 },
+      moves: bro.moves.length > 0
+        ? bro.moves.map((m) => ({ moveId: m.moveId, currentPP: Math.max(m.currentPP, 10) }))
+        : [{ moveId: 1, currentPP: 20 }],
+      statusEffect: bro.statusEffect,
+      statusTurns: 0,
+      isPlayer: true,
+      broType,
+      expYield: 0,
+      currentXP: bro.currentXP,
+    };
+
+    const playerTypeKey = `bro-${broType}`;
+    this.playerSprite.setTexture(playerTypeKey);
+    this.updateHealthBars();
+    this.battleSystem = new BattleSystem(this.playerSide, this.enemySide, this.config.isWild);
   }
 
   endBattle(outcome: 'victory' | 'defeat' | 'flee'): void {
@@ -363,10 +419,10 @@ export class BattleScene extends Phaser.Scene {
     bg.setStrokeStyle(2, 0xffffff, 0.6);
 
     // Move texts updated on show — we create 4 slots
-    const moveSlots = Array.from({ length: 4 }, (_, i) => {
+    this.moveSlotTexts = Array.from({ length: 4 }, (_, i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
-      const text = this.add.text(20 + col * 150, 16 + row * 36, `Move ${i + 1}`, {
+      const text = this.add.text(20 + col * 150, 16 + row * 36, '--', {
         fontSize: '15px', color: '#ffffff', fontFamily: 'monospace',
       }).setInteractive({ useHandCursor: true });
       text.on('pointerdown', () => {
@@ -375,7 +431,7 @@ export class BattleScene extends Phaser.Scene {
       return text;
     });
 
-    container.add([bg, ...moveSlots]);
+    container.add([bg, ...this.moveSlotTexts]);
     container.setVisible(false);
     container.setDepth(20);
 

@@ -1,4 +1,6 @@
 import * as Phaser from 'phaser';
+import { SaveSystem } from '@/game/systems/SaveSystem';
+import { gameState } from '@/game/GameState';
 
 const MENU_ITEMS = ['New Game', 'Continue', 'Settings'] as const;
 type MenuItem = typeof MENU_ITEMS[number];
@@ -120,9 +122,30 @@ export class TitleScene extends Phaser.Scene {
           this.scene.start('IntroScene');
         });
         break;
-      case 'Continue':
-        this.showMessage('No save data found.');
+      case 'Continue': {
+        const saveData = SaveSystem.load(0);
+        if (!saveData) {
+          this.showMessage('No save data found.');
+          break;
+        }
+
+        // Restore game state from save
+        gameState.reset();
+        gameState.playerName = saveData.playerName;
+        gameState.money = saveData.money;
+        gameState.badges = [...saveData.badges];
+        gameState.storyFlags = { ...saveData.storyFlags };
+        gameState.defeatedTrainers = [...saveData.defeatedTrainers];
+        gameState.currentZoneId = saveData.position.zoneId;
+        gameState.party.setParty(saveData.party);
+        gameState.party.setStorage(saveData.storage);
+        gameState.inventory.setInventory(saveData.inventory);
+
+        this.cameras.main.fadeOut(500, 0, 0, 0, () => {
+          this.scene.start('OverworldScene');
+        });
         break;
+      }
       case 'Settings':
         this.showMessage('Settings coming soon.');
         break;

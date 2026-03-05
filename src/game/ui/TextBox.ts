@@ -7,6 +7,7 @@ export class TextBox extends Phaser.GameObjects.Container {
   private typewriterTimer: Phaser.Time.TimerEvent | null = null;
   private resolveCallback: (() => void) | null = null;
   private isComplete = false;
+  private fullText = '';
 
   constructor(scene: Phaser.Scene, x: number, y: number, width: number, height: number) {
     super(scene, x, y);
@@ -39,6 +40,7 @@ export class TextBox extends Phaser.GameObjects.Container {
       this.textObject.setText('');
       this.arrow.setVisible(false);
       this.isComplete = false;
+      this.fullText = text;
       this.resolveCallback = resolve;
 
       let charIndex = 0;
@@ -67,10 +69,12 @@ export class TextBox extends Phaser.GameObjects.Container {
     if (!this.isComplete) {
       // Skip typewriter — show full text immediately
       this.clearTypewriter();
-      const current = this.textObject.text;
-      // We can't easily jump to the end without storing text; just mark complete
+      this.textObject.setText(this.fullText);
       this.isComplete = true;
       this.arrow.setVisible(true);
+      // Re-register for next press to resolve
+      this.scene.input.keyboard?.once('keydown-ENTER', this.advance, this);
+      this.scene.input.keyboard?.once('keydown-SPACE', this.advance, this);
       return;
     }
 

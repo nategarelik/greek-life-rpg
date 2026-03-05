@@ -3,10 +3,11 @@ import { Direction, type GridEngine } from 'grid-engine';
 import type { BattleConfig } from '@/types/battle';
 import { gameState } from '@/game/GameState';
 import { generateFreshmanQuad } from '@/game/utils/mapGenerator';
+import { EncounterSystem } from '@/game/systems/EncounterSystem';
+import { ENCOUNTER_MAP } from '@/data/encounters';
 
 // Tile index used to identify encounter tiles from mapGenerator
 const ENCOUNTER_TILE_INDEX = 3;
-const ENCOUNTER_CHANCE = 0.15;
 const TILE_SIZE = 32;
 const TUTORIAL_DISPLAY_DURATION = 3000;
 
@@ -20,6 +21,7 @@ interface NpcData {
   y: number;
   dialogue: string;
   sprite: Phaser.GameObjects.Image;
+  isHealer?: boolean;
 }
 
 type FacingDirection = 'up' | 'down' | 'left' | 'right';
@@ -37,6 +39,7 @@ export class OverworldScene extends Phaser.Scene {
   private hudBar!: Phaser.GameObjects.Container;
   private zoneLabelText!: Phaser.GameObjects.Text;
   private tutorialOverlay?: Phaser.GameObjects.Container;
+  private encounterSystem!: EncounterSystem;
 
   constructor() {
     super({ key: 'OverworldScene' });
@@ -44,6 +47,7 @@ export class OverworldScene extends Phaser.Scene {
 
   create(): void {
     this.inBattle = false;
+    this.encounterSystem = new EncounterSystem();
 
     const self = this as unknown as OverworldSceneWithPlugin;
     const { width, height } = this.cameras.main;
@@ -75,6 +79,12 @@ export class OverworldScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     this.input.keyboard!.on('keydown-SPACE', () => this.tryNpcInteraction());
+
+    this.input.keyboard!.on('keydown-ENTER', () => {
+      if (this.inBattle || this.dialogueBox) return;
+      this.scene.pause('OverworldScene');
+      this.scene.launch('PauseMenuScene');
+    });
 
     this.addNpcs(tilemap);
     this.buildHud(width, height);
@@ -215,9 +225,9 @@ export class OverworldScene extends Phaser.Scene {
     void tilemap;
 
     const npcPositions = [
-      { x: 7, y: 3, dialogue: 'Welcome to the Freshman Quad! Walk into the tall grass to encounter wild Bros.' },
-      { x: 24, y: 3, dialogue: 'Rumor has it there are some strong Bros near the dorms. Good luck, pledge!' },
-      { x: 7, y: 20, dialogue: 'Rush week is wild. I heard some legendary Bros hang out in the far corners of campus.' },
+      { x: 7, y: 3, dialogue: 'Welcome to the Freshman Quad! Walk into the tall grass to encounter wild Bros.', isHealer: false },
+      { x: 24, y: 3, dialogue: 'Need a rest? Let me heal your Bros!', isHealer: true },
+      { x: 7, y: 20, dialogue: 'Rush week is wild. I heard some legendary Bros hang out in the far corners of campus.', isHealer: false },
     ];
 
     for (const pos of npcPositions) {
@@ -227,7 +237,7 @@ export class OverworldScene extends Phaser.Scene {
         'npc',
       ).setDepth(9);
 
-      this.npcs.push({ x: pos.x, y: pos.y, dialogue: pos.dialogue, sprite });
+      this.npcs.push({ x: pos.x, y: pos.y, dialogue: pos.dialogue, sprite, isHealer: pos.isHealer });
     }
   }
 
@@ -248,7 +258,12 @@ export class OverworldScene extends Phaser.Scene {
     const npc = this.npcs.find((n) => n.x === targetX && n.y === targetY);
     if (!npc) return;
 
-    this.showDialogue(npc.dialogue);
+    if (npc.isHealer) {
+      gameState.party.healAll();
+      this.showDialogue('Your Bros have been fully healed!');
+    } else {
+      this.showDialogue(npc.dialogue);
+    }
   }
 
   private getFacingOffset(): { x: number; y: number } {
@@ -294,11 +309,9 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private checkEncounter(x: number, y: number): void {
-    if (!this.encounterTiles.has(`${x},${y}`)) return;
-    if (Math.random() > ENCOUNTER_CHANCE) return;
-
+    const isEncounterTile = this.encounterTiles.has(`${x},${y}`);
+    if (!this.encounterSystem.checkEncounter(isEncounterTile)) return;
     if (!gameState.hasStarterBro()) return;
-
     this.triggerWildBattle();
   }
 
@@ -306,14 +319,18 @@ export class OverworldScene extends Phaser.Scene {
     this.inBattle = true;
     this.scene.pause('OverworldScene');
 
-    const encounterPool = [1, 4, 7, 10, 13];
-    const speciesId = encounterPool[Math.floor(Math.random() * encounterPool.length)];
-    const level = Math.floor(Math.random() * 4) + 2;
+    const table = ENCOUNTER_MAP[gameState.currentZoneId];
+    let battleConfig: BattleConfig;
 
-    const battleConfig: BattleConfig = {
-      isWild: true,
-      enemyParty: [{ speciesId, level }],
-    };
+    if (table) {
+      battleConfig = this.encounterSystem.generateEncounter(table.encounters);
+    } else {
+      // Fallback if no encounter table for current zone
+      battleConfig = {
+        isWild: true,
+        enemyParty: [{ speciesId: 1, level: 3 }],
+      };
+    }
 
     this.scene.launch('TransitionScene', {
       targetScene: 'BattleScene',
