@@ -35,6 +35,8 @@ Open [http://localhost:3000](http://localhost:3000) and select **New Game** to s
 |-----|--------|
 | Arrow keys | Move / navigate menus |
 | Enter / Z | Confirm / interact |
+| Space | Talk to NPCs / dismiss dialogue |
+| Esc | Open pause menu |
 
 ## Game Overview
 
@@ -118,6 +120,7 @@ src/
 │   │   ├── OverworldScene.ts
 │   │   ├── BattleScene.ts
 │   │   ├── BattleUIScene.ts
+│   │   ├── PauseMenuScene.ts
 │   │   ├── DialogScene.ts
 │   │   └── TransitionScene.ts
 │   ├── entities/           # Player, NPC, Trainer, BroInstance
@@ -155,23 +158,27 @@ src/
 
 ### Implemented
 
-- Scene flow: boot, preload, title, intro, overworld, battle
+- Scene flow: boot, preload, title, intro, overworld, battle, pause menu
 - Grid-based overworld exploration with Grid-Engine
 - Turn-based battle system with full damage calculation
+- Defeat handling when all party Bros faint
 - 18 Bro species across 6 types with 3-stage evolution chains
 - 24 moves with type effectiveness, status effects, stat modifiers, and recoil
-- Party management (6-Bro limit)
+- Party management (6-Bro limit) with real party integration in battles
 - Inventory system
 - Wild encounter system
 - Catch mechanics
-- NPC dialogue system
+- NPC dialogue system (face NPC + Space to talk)
+- Pause menu with party viewer, bag, and save placeholder
+- Overworld HUD with zone labels and tutorial overlay
+- Stat recalculation on level up
 
 ### Planned
 
 - Trainer battles
 - Story progression and quest system
 - Evolution triggers
-- Save/load persistence
+- Full save/load persistence
 - Audio (BGM + SFX)
 - Full item usage in battle
 - Gym leaders and badge system
