@@ -3,6 +3,7 @@ import { GridEngine } from 'grid-engine';
 import { BootScene } from './scenes/BootScene';
 import { PreloaderScene } from './scenes/PreloaderScene';
 import { TitleScene } from './scenes/TitleScene';
+import { IntroScene } from './scenes/IntroScene';
 import { OverworldScene } from './scenes/OverworldScene';
 import { BattleScene } from './scenes/BattleScene';
 import { BattleUIScene } from './scenes/BattleUIScene';
@@ -45,6 +46,7 @@ export const StartGame = (parent: string): Phaser.Game => {
       BootScene,
       PreloaderScene,
       TitleScene,
+      IntroScene,
       OverworldScene,
       BattleScene,
       BattleUIScene,

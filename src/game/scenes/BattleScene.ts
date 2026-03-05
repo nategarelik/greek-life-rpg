@@ -13,6 +13,8 @@ import { VictoryState } from '@/game/states/battle-states/VictoryState';
 import { CatchState } from '@/game/states/battle-states/CatchState';
 import { FleeState } from '@/game/states/battle-states/FleeState';
 import { BRO_MAP } from '@/data/bros';
+import { gameState } from '@/game/GameState';
+import { addXP } from '@/game/entities/BroInstance';
 
 type MenuSelection = 'fight' | 'bag' | 'bros' | 'run';
 
@@ -59,7 +61,8 @@ export class BattleScene extends Phaser.Scene {
     // Sprites
     const enemyTypeKey = `bro-${this.enemySide.broType}`;
     this.enemySprite = this.add.image(width * 0.7, height * 0.3, enemyTypeKey).setScale(1.5);
-    this.playerSprite = this.add.image(width * 0.25, height * 0.55, 'player').setScale(1.5);
+    const playerTypeKey = `bro-${this.playerSide.broType}`;
+    this.playerSprite = this.add.image(width * 0.25, height * 0.55, playerTypeKey).setScale(1.5);
 
     // Health bars
     this.enemyHealthBar = new HealthBar(this, width * 0.45, height * 0.18, 160);
@@ -178,6 +181,21 @@ export class BattleScene extends Phaser.Scene {
 
   applyLevelUp(newLevel: number): void {
     this.playerSide.level = newLevel;
+    this.syncPlayerXpToParty();
+  }
+
+  syncPlayerXpToParty(): void {
+    const activeBro = gameState.party.getFirstNonFainted();
+    if (!activeBro) return;
+
+    const xpGained = this.playerSide.currentXP;
+    if (xpGained > 0) {
+      addXP(activeBro, xpGained);
+    }
+
+    activeBro.currentSTA = this.playerSide.currentSTA;
+    activeBro.level = this.playerSide.level;
+    activeBro.statusEffect = this.playerSide.statusEffect;
   }
 
   onCatchSuccess(): void {
@@ -185,6 +203,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   endBattle(outcome: 'victory' | 'defeat' | 'flee'): void {
+    this.syncPlayerXpToParty();
+
     this.time.delayedCall(300, () => {
       this.scene.stop('BattleScene');
       const overworld = this.scene.get('OverworldScene');
@@ -241,27 +261,53 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private buildPlayerParticipant(): ExtendedParticipant {
-    // Minimal player bro for the battle — will be replaced by real party system in integration
-    const maxSTA = 40;
+    const activeBro = gameState.party.getFirstNonFainted();
+
+    if (!activeBro) {
+      // Fallback if player somehow enters battle without a Bro
+      const maxSTA = 40;
+      return {
+        broInstanceId: 'player-bro-0',
+        speciesId: 1,
+        name: 'Lil Pledge',
+        level: 5,
+        currentSTA: maxSTA,
+        maxSTA,
+        stats: { stamina: 45, hype: 49, clout: 25, chill: 40, drip: 25, vibes: 35 },
+        statStages: { stamina: 0, hype: 0, clout: 0, chill: 0, drip: 0, vibes: 0 },
+        moves: [{ moveId: 1, currentPP: 20 }],
+        statusEffect: null,
+        statusTurns: 0,
+        isPlayer: true,
+        broType: 'jock',
+        expYield: 0,
+        currentXP: 0,
+      };
+    }
+
+    const species = BRO_MAP[activeBro.speciesId];
+    const displayName = activeBro.nickname ?? species?.name ?? `Bro #${activeBro.speciesId}`;
+    const broType = species?.type ?? 'jock';
+    const maxSTA = activeBro.stats.stamina;
+
     return {
-      broInstanceId: 'player-bro-0',
-      speciesId: 1,
-      name: 'Chad',
-      level: 5,
-      currentSTA: maxSTA,
+      broInstanceId: activeBro.instanceId,
+      speciesId: activeBro.speciesId,
+      name: displayName,
+      level: activeBro.level,
+      currentSTA: activeBro.currentSTA,
       maxSTA,
-      stats: { stamina: 45, hype: 50, clout: 35, chill: 40, drip: 35, vibes: 45 },
+      stats: { ...activeBro.stats },
       statStages: { stamina: 0, hype: 0, clout: 0, chill: 0, drip: 0, vibes: 0 },
-      moves: [
-        { moveId: 1, currentPP: 20 },
-        { moveId: 2, currentPP: 15 },
-      ],
-      statusEffect: null,
+      moves: activeBro.moves.length > 0
+        ? activeBro.moves.map((m) => ({ moveId: m.moveId, currentPP: Math.max(m.currentPP, 10) }))
+        : [{ moveId: 1, currentPP: 20 }],
+      statusEffect: activeBro.statusEffect,
       statusTurns: 0,
       isPlayer: true,
-      broType: 'jock',
+      broType,
       expYield: 0,
-      currentXP: 0,
+      currentXP: activeBro.currentXP,
     };
   }
 

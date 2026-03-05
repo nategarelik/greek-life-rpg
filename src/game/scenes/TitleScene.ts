@@ -117,7 +117,7 @@ export class TitleScene extends Phaser.Scene {
     switch (item) {
       case 'New Game':
         this.cameras.main.fadeOut(500, 0, 0, 0, () => {
-          this.scene.start('OverworldScene');
+          this.scene.start('IntroScene');
         });
         break;
       case 'Continue':
